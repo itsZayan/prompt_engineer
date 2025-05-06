@@ -30,7 +30,7 @@ An advanced AI-powered prompt engineering tool that helps you transform simple t
 
 1. Clone the repository:
    ```
-   git clone https://github.com/yourusername/prompt-engineer-pro.git
+   git clone https://github.com/itsZayan/prompt_engineer
    cd prompt-engineer-pro
    ```
 
