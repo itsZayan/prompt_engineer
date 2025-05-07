@@ -35,14 +35,89 @@ const Navbar = () => {
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
       scrolled ? 'bg-slate-900/95 backdrop-blur-md shadow-md' : 'bg-transparent'
     }`}>
+      {/* Add style for text glow */}
+      <style jsx>{`
+        .text-glow {
+          text-shadow: 0 0 10px rgba(129, 140, 248, 0.7);
+        }
+      `}</style>
+      
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <div className="flex items-center">
             <Link to="/" className="flex items-center">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 flex items-center justify-center mr-2">
-                <span className="text-white text-lg font-bold">PE</span>
-              </div>
-              <span className="text-xl font-bold text-white">Prompt Engineer</span>
+              <motion.div 
+                className="relative w-10 h-10 mr-2"
+                whileHover={{ 
+                  scale: 1.1,
+                  rotate: 5,
+                  transition: { duration: 0.2 }
+                }}
+              >
+                <svg 
+                  viewBox="0 0 50 50" 
+                  fill="none" 
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-full h-full drop-shadow-[0_0_8px_rgba(99,102,241,0.8)]"
+                >
+                  {/* Background circle with pulse animation */}
+                  <motion.circle 
+                    cx="25" 
+                    cy="25" 
+                    r="23" 
+                    fill="url(#logoGradient)"
+                    animate={{ 
+                      opacity: [0.8, 1, 0.8],
+                      scale: [1, 1.02, 1]
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 3,
+                      ease: "easeInOut"
+                    }}
+                  />
+                  
+                  {/* Brain/neural network nodes */}
+                  <g>
+                    {/* Nodes */}
+                    <circle cx="20" cy="18" r="3" fill="white" />
+                    <circle cx="32" cy="15" r="2.5" fill="white" />
+                    <circle cx="16" cy="28" r="2.5" fill="white" />
+                    <circle cx="28" cy="28" r="2" fill="white" />
+                    <circle cx="36" cy="25" r="2" fill="white" />
+                    <circle cx="24" cy="37" r="2.5" fill="white" />
+                    <circle cx="34" cy="35" r="2" fill="white" />
+                    
+                    {/* Connections with animation */}
+                    <motion.path 
+                      d="M20 18L32 15M20 18L16 28M20 18L28 28M32 15L36 25M16 28L24 37M28 28L24 37M36 25L34 35M28 28L34 35" 
+                      stroke="white" 
+                      strokeWidth="1"
+                      strokeLinecap="round"
+                      animate={{ 
+                        opacity: [0.4, 0.8, 0.4] 
+                      }}
+                      transition={{
+                        repeat: Infinity,
+                        duration: 3,
+                        ease: "easeInOut"
+                      }}
+                    />
+                  </g>
+                  
+                  {/* Gradient definition */}
+                  <defs>
+                    <linearGradient id="logoGradient" x1="10" y1="10" x2="40" y2="40" gradientUnits="userSpaceOnUse">
+                      <stop stopColor="#6366F1" />
+                      <stop offset="0.5" stopColor="#8B5CF6" />
+                      <stop offset="1" stopColor="#D946EF" />
+                    </linearGradient>
+                  </defs>
+                </svg>
+              </motion.div>
+              <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 text-glow">
+                Prompt Engineer
+              </span>
             </Link>
           </div>
 

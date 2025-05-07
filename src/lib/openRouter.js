@@ -1,4 +1,5 @@
-const OPENROUTER_API_KEY = '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';
+// OpenRouter API key
+const OPENROUTER_API_KEY = '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';
 const SITE_URL = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 const SITE_NAME = 'Prompt Engineer Pro';
 

@@ -10,15 +10,24 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check for active session
-    const session = supabase.auth.getSession();
+    // Check for active session - fix the getSession method which returns a promise
+    const fetchSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        setUser(data?.session?.user || null);
+        setLoading(false);
+      } catch (error) {
+        console.error('Error getting session:', error);
+        setLoading(false);
+      }
+    };
     
-    setUser(session?.user || null);
-    setLoading(false);
+    fetchSession();
 
     // Set up listener for auth changes
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.id);
         setUser(session?.user || null);
         setLoading(false);
       }

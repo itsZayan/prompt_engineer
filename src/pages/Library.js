@@ -6,6 +6,175 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import ReactMarkdown from 'react-markdown';
+
+// Function to format Markdown with HTML - as a workaround for ReactMarkdown issues
+const formatMarkdown = (text) => {
+  if (!text) return '';
+  
+  // Escape HTML
+  const escapeHtml = (unsafe) => {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+  
+  // Use escaped text for processing
+  let formatted = escapeHtml(text);
+  
+  // Replace headers (after escaping HTML)
+  formatted = formatted
+    .replace(/^# (.*?)$/gm, '<h1 class="text-xl font-bold mb-3 text-indigo-300">$1</h1>')
+    .replace(/^## (.*?)$/gm, '<h2 class="text-lg font-bold mb-2 text-indigo-300">$1</h2>')
+    .replace(/^### (.*?)$/gm, '<h3 class="text-md font-bold mb-2 text-indigo-300">$1</h3>');
+  
+  // Replace bold and italic (after escaping HTML)
+  formatted = formatted
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-white">$1</strong>')
+    .replace(/__(.*?)__/g, '<strong class="font-bold text-white">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em class="italic text-slate-200">$1</em>')
+    .replace(/_(.*?)_/g, '<em class="italic text-slate-200">$1</em>');
+  
+  // Replace unordered lists with proper HTML structure
+  let inList = false;
+  let listLines = [];
+  let listResult = [];
+  
+  formatted.split('\n').forEach(line => {
+    // Convert list markers to HTML list items
+    if (line.match(/^- /)) {
+      if (!inList) {
+        listResult.push('<ul class="list-disc mb-3">');
+        inList = true;
+      }
+      listResult.push(`<li class="text-slate-300">${line.replace(/^- /, '')}</li>`);
+    } else if (inList) {
+      listResult.push('</ul>');
+      listResult.push(line);
+      inList = false;
+    } else {
+      listResult.push(line);
+    }
+  });
+  
+  if (inList) {
+    listResult.push('</ul>');
+  }
+  
+  formatted = listResult.join('\n');
+  
+  // Simple paragraph conversion for lines that aren't special markdown
+  const lines = formatted.split('\n');
+  let inPre = false;
+  let paragraphs = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    // Skip lines that are already wrapped in HTML
+    if (line.startsWith('<') && line.endsWith('>')) {
+      paragraphs.push(line);
+      continue;
+    }
+    
+    // Handle code blocks
+    if (line.match(/^```/)) {
+      inPre = !inPre;
+      if (inPre) {
+        paragraphs.push('<pre class="bg-slate-800 p-3 rounded-md overflow-auto my-3"><code class="text-amber-300">');
+      } else {
+        paragraphs.push('</code></pre>');
+      }
+      continue;
+    }
+    
+    if (inPre) {
+      paragraphs.push(line);
+      continue;
+    }
+    
+    // Handle normal paragraphs
+    if (line.trim() !== '') {
+      paragraphs.push(`<p class="mb-2 text-slate-300">${line}</p>`);
+    } else {
+      paragraphs.push(line); // Keep empty lines
+    }
+  }
+  
+  formatted = paragraphs.join('\n');
+  
+  // Replace code inline (after handling blocks)
+  formatted = formatted
+    .replace(/`([^`]+)`/g, '<code class="bg-slate-800 px-1 py-0.5 rounded text-amber-300">$1</code>');
+  
+  // Replace links
+  formatted = formatted
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-indigo-400 hover:text-indigo-300 underline">$1</a>');
+  
+  // Replace blockquotes
+  formatted = formatted
+    .replace(/^&gt; (.*?)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-4 italic text-slate-400 my-2">$1</blockquote>');
+  
+  return formatted;
+};
+
+// Custom CSS for scrollbars and markdown
+const customStyles = `
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+  
+  /* Markdown styling */
+  .markdown-wrapper ul {
+    list-style-type: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .markdown-wrapper ol {
+    list-style-type: decimal;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .markdown-wrapper li {
+    margin-bottom: 0.25rem;
+  }
+  
+  .markdown-wrapper pre {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background-color: #1e293b;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+  }
+  
+  .markdown-wrapper code {
+    font-family: monospace;
+  }
+  
+  .markdown-wrapper p {
+    margin-bottom: 0.75rem;
+  }
+`;
 
 const Library = () => {
   const { user } = useAuth();
@@ -63,7 +232,7 @@ const Library = () => {
       prompt => 
         prompt.original_text.toLowerCase().includes(term) || 
         prompt.enhanced_prompt.toLowerCase().includes(term) ||
-        prompt.prompt_type.toLowerCase().includes(term)
+        (prompt.prompt_type ? prompt.prompt_type.toLowerCase().includes(term) : false)
     );
     setFilteredPrompts(filtered);
   }, [searchTerm, prompts]);
@@ -161,6 +330,9 @@ const Library = () => {
     <div className="min-h-screen flex flex-col bg-background-DEFAULT">
       <Navbar />
       
+      {/* Add the custom scrollbar styles */}
+      <style dangerouslySetInnerHTML={{ __html: customStyles }} />
+      
       <div className="pt-20 pb-10 px-4 flex-1">
         <div className="max-w-6xl mx-auto">
           {/* Header */}
@@ -208,9 +380,9 @@ const Library = () => {
           )}
           
           {/* Prompts Grid/List */}
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {loading ? (
-              <div className="flex flex-col items-center justify-center py-12">
+              <div className="col-span-3 flex flex-col items-center justify-center py-12">
                 <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
                 <p className="text-slate-300">Loading your prompts...</p>
               </div>
@@ -219,7 +391,7 @@ const Library = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ duration: 0.5 }}
-                className="text-center py-12"
+                className="col-span-3 text-center py-12"
               >
                 <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                   <span className="text-4xl">📚</span>
@@ -242,100 +414,97 @@ const Library = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.05 }}
-                  className="card overflow-hidden"
+                  className="card overflow-hidden bg-foreground-DEFAULT p-6 rounded-lg border border-slate-700 flex flex-col h-[420px] hover:shadow-glow hover:border-indigo-500/50 transition-all duration-300 hover:-translate-y-1 animate-floating"
+                  style={{ 
+                    animationDelay: `${index * 0.2}s`,
+                  }}
                 >
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <div>
-                      <span className="px-3 py-1 bg-indigo-900/50 text-indigo-300 rounded-full text-xs uppercase">
-                        {prompt.prompt_type}
-                      </span>
-                      <span className="ml-3 text-slate-400 text-sm">
-                        Saved on {formatDate(prompt.created_at)}
-                      </span>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleCopy(prompt.id, prompt.enhanced_prompt)}
-                        className="btn-secondary flex items-center py-1 px-3 text-sm"
-                        disabled={copied === prompt.id}
-                      >
-                        {copied === prompt.id ? (
-                          <>
-                            <FiCheck className="mr-1" /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <FiCopy className="mr-1" /> Copy
-                          </>
-                        )}
-                      </button>
-                      {editingPrompt !== prompt.id ? (
-                        <>
-                          <button
-                            onClick={() => handleEdit(prompt)}
-                            className="btn-accent flex items-center py-1 px-3 text-sm"
-                          >
-                            <FiEdit className="mr-1" /> Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(prompt.id)}
-                            className="btn-danger flex items-center py-1 px-3 text-sm"
-                            disabled={deleting === prompt.id}
-                          >
-                            {deleting === prompt.id ? (
-                              <FiLoader className="animate-spin" />
-                            ) : (
-                              <>
-                                <FiTrash2 className="mr-1" /> Delete
-                              </>
-                            )}
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={saveEdit}
-                            className="btn-primary flex items-center py-1 px-3 text-sm"
-                            disabled={savingEdit}
-                          >
-                            {savingEdit ? (
-                              <FiLoader className="animate-spin" />
-                            ) : (
-                              'Save'
-                            )}
-                          </button>
-                          <button
-                            onClick={cancelEdit}
-                            className="btn-danger flex items-center py-1 px-3 text-sm"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  
+                  {/* Card Header with Title */}
                   <div className="mb-4">
-                    <h3 className="text-sm font-medium text-slate-400 mb-1">Original Idea</h3>
-                    <p className="text-slate-300 bg-slate-800/50 p-3 rounded-lg">
-                      {prompt.original_text}
+                    <h3 className="text-xl font-bold text-white mb-1">
+                      {(prompt.title || "Untitled Prompt").split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')} is an Prompt...
+                    </h3>
+                    <p className="text-sm text-slate-400">
+                      Created on {formatDate(prompt.created_at)}
                     </p>
                   </div>
                   
-                  <div>
-                    <h3 className="text-sm font-medium text-slate-400 mb-1">Enhanced Prompt</h3>
-                    {editingPrompt === prompt.id ? (
+                  {/* Card Content - Enhanced Prompt */}
+                  <div className="mb-4 flex-grow overflow-auto custom-scrollbar pr-2 markdown-wrapper">
+                    <div 
+                      className="markdown-content prose prose-invert prose-sm max-w-none text-slate-300"
+                      dangerouslySetInnerHTML={{ __html: formatMarkdown(prompt.enhanced_prompt) }}
+                    />
+                  </div>
+                  
+                  {/* Card Actions */}
+                  <div className="flex space-x-2 mt-auto pt-4">
+                    <button
+                      onClick={() => handleEdit(prompt)}
+                      className="px-4 py-2 bg-slate-700 hover:bg-indigo-600 text-white rounded flex items-center transition-colors duration-200"
+                    >
+                      <FiEdit className="mr-2" /> Edit
+                    </button>
+                    
+                    <button
+                      onClick={() => handleDelete(prompt.id)}
+                      className="px-4 py-2 bg-slate-700 hover:bg-red-600 text-white rounded flex items-center transition-colors duration-200"
+                      disabled={deleting === prompt.id}
+                    >
+                      {deleting === prompt.id ? (
+                        <FiLoader className="animate-spin" />
+                      ) : (
+                        <>
+                          <FiTrash2 className="mr-2" /> Delete
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  
+                  {/* Edit Mode Content */}
+                  {editingPrompt === prompt.id && (
+                    <div className="mt-4 border-t border-slate-700 pt-4">
+                      <h4 className="text-sm font-medium text-slate-400 mb-2">Edit Enhanced Prompt</h4>
+                      
+                      {/* Preview Section */}
+                      <div className="mb-3">
+                        <h5 className="text-xs font-medium text-slate-500 mb-1">Preview:</h5>
+                        <div 
+                          className="bg-slate-800 p-3 rounded-lg mb-3 custom-scrollbar markdown-wrapper"
+                          style={{ maxHeight: '150px', overflow: 'auto' }}
+                        >
+                          <div dangerouslySetInnerHTML={{ __html: formatMarkdown(editedText) }} />
+                        </div>
+                      </div>
+                      
+                      {/* Editor Section */}
                       <textarea
                         value={editedText}
                         onChange={(e) => setEditedText(e.target.value)}
-                        className="input h-40 w-full"
+                        className="input h-40 w-full mb-3"
                       />
-                    ) : (
-                      <div className="bg-slate-800/50 p-3 rounded-lg text-slate-200 whitespace-pre-wrap">
-                        {prompt.enhanced_prompt}
+                      
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={saveEdit}
+                          className="btn-primary flex items-center py-1 px-3 text-sm"
+                          disabled={savingEdit}
+                        >
+                          {savingEdit ? (
+                            <FiLoader className="animate-spin mr-1" />
+                          ) : (
+                            'Save Changes'
+                          )}
+                        </button>
+                        <button
+                          onClick={cancelEdit}
+                          className="btn-secondary flex items-center py-1 px-3 text-sm"
+                        >
+                          Cancel
+                        </button>
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </motion.div>
               ))
             )}

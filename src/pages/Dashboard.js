@@ -10,6 +10,174 @@ import { supabase } from '../lib/supabase';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
+// Function to format Markdown with HTML
+const formatMarkdown = (text) => {
+  if (!text) return '';
+  
+  // Escape HTML
+  const escapeHtml = (unsafe) => {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  };
+  
+  // Use escaped text for processing
+  let formatted = escapeHtml(text);
+  
+  // Replace headers (after escaping HTML)
+  formatted = formatted
+    .replace(/^# (.*?)$/gm, '<h1 class="text-xl font-bold mb-3 text-indigo-300">$1</h1>')
+    .replace(/^## (.*?)$/gm, '<h2 class="text-lg font-bold mb-2 text-indigo-300">$1</h2>')
+    .replace(/^### (.*?)$/gm, '<h3 class="text-md font-bold mb-2 text-indigo-300">$1</h3>');
+  
+  // Replace bold and italic (after escaping HTML)
+  formatted = formatted
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-white">$1</strong>')
+    .replace(/__(.*?)__/g, '<strong class="font-bold text-white">$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em class="italic text-slate-200">$1</em>')
+    .replace(/_(.*?)_/g, '<em class="italic text-slate-200">$1</em>');
+  
+  // Replace unordered lists with proper HTML structure
+  let inList = false;
+  let listLines = [];
+  let listResult = [];
+  
+  formatted.split('\n').forEach(line => {
+    // Convert list markers to HTML list items
+    if (line.match(/^- /)) {
+      if (!inList) {
+        listResult.push('<ul class="list-disc mb-3">');
+        inList = true;
+      }
+      listResult.push(`<li class="text-slate-300">${line.replace(/^- /, '')}</li>`);
+    } else if (inList) {
+      listResult.push('</ul>');
+      listResult.push(line);
+      inList = false;
+    } else {
+      listResult.push(line);
+    }
+  });
+  
+  if (inList) {
+    listResult.push('</ul>');
+  }
+  
+  formatted = listResult.join('\n');
+  
+  // Simple paragraph conversion for lines that aren't special markdown
+  const lines = formatted.split('\n');
+  let inPre = false;
+  let paragraphs = [];
+  
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    
+    // Skip lines that are already wrapped in HTML
+    if (line.startsWith('<') && line.endsWith('>')) {
+      paragraphs.push(line);
+      continue;
+    }
+    
+    // Handle code blocks
+    if (line.match(/^```/)) {
+      inPre = !inPre;
+      if (inPre) {
+        paragraphs.push('<pre class="bg-slate-800 p-3 rounded-md overflow-auto my-3"><code class="text-amber-300">');
+      } else {
+        paragraphs.push('</code></pre>');
+      }
+      continue;
+    }
+    
+    if (inPre) {
+      paragraphs.push(line);
+      continue;
+    }
+    
+    // Handle normal paragraphs
+    if (line.trim() !== '') {
+      paragraphs.push(`<p class="mb-2 text-slate-300">${line}</p>`);
+    } else {
+      paragraphs.push(line); // Keep empty lines
+    }
+  }
+  
+  formatted = paragraphs.join('\n');
+  
+  // Replace code inline (after handling blocks)
+  formatted = formatted
+    .replace(/`([^`]+)`/g, '<code class="bg-slate-800 px-1 py-0.5 rounded text-amber-300">$1</code>');
+  
+  // Replace links
+  formatted = formatted
+    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" class="text-indigo-400 hover:text-indigo-300 underline">$1</a>');
+  
+  // Replace blockquotes
+  formatted = formatted
+    .replace(/^&gt; (.*?)$/gm, '<blockquote class="border-l-4 border-indigo-500 pl-4 italic text-slate-400 my-2">$1</blockquote>');
+  
+  return formatted;
+};
+
+// Custom CSS for scrollbars and markdown
+const customStyles = `
+  /* Custom scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+  }
+  
+  /* Markdown styling */
+  .markdown-wrapper ul {
+    list-style-type: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .markdown-wrapper ol {
+    list-style-type: decimal;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+  
+  .markdown-wrapper li {
+    margin-bottom: 0.25rem;
+  }
+  
+  .markdown-wrapper pre {
+    margin: 1rem 0;
+    padding: 0.75rem;
+    background-color: #1e293b;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+  }
+  
+  .markdown-wrapper code {
+    font-family: monospace;
+  }
+  
+  .markdown-wrapper p {
+    margin-bottom: 0.75rem;
+  }
+`;
+
 const Dashboard = () => {
   const { user } = useAuth();
   const [userInput, setUserInput] = useState('');
@@ -165,24 +333,52 @@ const Dashboard = () => {
     try {
       setSaving(true);
       
+      // Debug flag to show details in console
+      const DEBUG = true;
+      
+      if (DEBUG) {
+        console.log("Attempting to save prompt with user:", user?.id);
+        console.log("User input length:", userInput.length);
+        console.log("Generated prompt length:", generatedPrompt.length);
+      }
+      
+      // Check if user is authenticated
+      if (!user || !user.id) {
+        throw new Error('You must be logged in to save prompts');
+      }
+      
+      // Create title from user input (it's required in the database)
+      const title = userInput.length > 50 
+        ? userInput.substring(0, 50) + '...' 
+        : userInput;
+      
+      // Create object with required database fields (title is required)
+      const promptData = { 
+        user_id: user.id, 
+        original_text: userInput,
+        enhanced_prompt: generatedPrompt,
+        created_at: new Date().toISOString(),
+        title: title // Required field
+      };
+      
+      if (DEBUG) console.log("Saving prompt data:", promptData);
+      
+      // Save to Supabase with better error handling
       const { data, error } = await supabase
         .from('prompts')
-        .insert([
-          { 
-            user_id: user.id, 
-            original_text: userInput,
-            enhanced_prompt: generatedPrompt,
-            prompt_type: promptType,
-            created_at: new Date().toISOString()
-          }
-        ]);
+        .insert([promptData]);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase Error:', error);
+        throw new Error(error.message || 'Database error');
+      }
+      
+      if (DEBUG) console.log('Prompt saved successfully:', data);
       
       toast.success('Prompt saved to your library!');
     } catch (err) {
       console.error('Error saving prompt:', err);
-      toast.error('Failed to save prompt. Please try again.');
+      toast.error(`Failed to save: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -225,6 +421,9 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen flex flex-col bg-background-DEFAULT">
       <Navbar />
+      
+      {/* Add custom styles */}
+      <style dangerouslySetInnerHTML={{ __html: customStyles }} />
       
       <div className="pt-20 pb-10 px-4 flex-1">
         <div className="max-w-6xl mx-auto">
@@ -434,7 +633,9 @@ const Dashboard = () => {
                       <p className="text-slate-400 text-sm mt-2">This may take a few moments</p>
                     </div>
                   ) : generatedPrompt ? (
-                    <div className="text-slate-200 whitespace-pre-wrap">{generatedPrompt}</div>
+                    <div className="text-slate-200 whitespace-pre-wrap markdown-wrapper custom-scrollbar">
+                      <div dangerouslySetInnerHTML={{ __html: formatMarkdown(generatedPrompt) }} />
+                    </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full text-center">
                       <div className="w-24 h-24 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 rounded-full p-1 opacity-50">
@@ -448,10 +649,52 @@ const Dashboard = () => {
                 </div>
                 
                 {generatedPrompt && (
-                  <div className="mt-4 text-center">
-                    <Link to="/library" className="text-indigo-400 hover:text-indigo-300 text-sm">
-                      View all your saved prompts in your library
-                    </Link>
+                  <div className="mt-4">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-4 bg-indigo-900/30 border border-indigo-800 rounded-lg">
+                      <div>
+                        <h3 className="font-medium text-indigo-300 mb-1">What would you like to do with your prompt?</h3>
+                        <p className="text-slate-300 text-sm">You can copy it for immediate use or save it to your library for later.</p>
+                      </div>
+                      <div className="flex space-x-3">
+                        <button
+                          onClick={handleCopy}
+                          disabled={copied}
+                          className="btn-secondary flex items-center py-2 px-4"
+                        >
+                          {copied ? (
+                            <>
+                              <FiCheck className="mr-2" /> Copied to Clipboard
+                            </>
+                          ) : (
+                            <>
+                              <FiCopy className="mr-2" /> Copy Prompt
+                            </>
+                          )}
+                        </button>
+                        
+                        <button
+                          onClick={handleSave}
+                          disabled={saving}
+                          className="btn-accent flex items-center py-2 px-4"
+                        >
+                          {saving ? (
+                            <>
+                              <FiLoader className="animate-spin mr-2" /> Saving...
+                            </>
+                          ) : (
+                            <>
+                              <FiSave className="mr-2" /> Save to Library
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-3 text-center">
+                      <Link to="/library" className="text-indigo-400 hover:text-indigo-300 text-sm">
+                        View all your saved prompts in your library
+                      </Link>
+                    </div>
                   </div>
                 )}
               </div>
